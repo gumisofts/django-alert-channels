@@ -354,6 +354,20 @@ class CeleryTests(Base):
         self.assertNotIn("0911000001", alert.text())
         self.assertTrue(hook.install())
 
+    def test_workers_get_the_handler_and_celery_own_failure_line_is_skipped(self):
+        from alert_channels.contrib import celery as hook
+
+        hook.install()
+        worker_root = logging.Logger("worker-root")
+        hook._attach(logger=worker_root)
+        hook._attach(logger=worker_root)
+        self.assertEqual([type(h) for h in worker_root.handlers], [AlertHandler])
+
+        handler = AlertHandler(config=config())
+        logger_with(handler, "celery.app.trace").error("Task x raised unexpected: RuntimeError()")
+        logger_with(handler, "apps.wallet.tasks").error("logged inside a task")
+        self.assertEqual([alert.message for _, alert, _ in SENT], ["logged inside a task"])
+
 
 class CommandTests(Base):
     def test_alert_test_command(self):

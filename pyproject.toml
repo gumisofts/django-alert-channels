@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "django-alert-channels"
-version = "0.1.1"
+version = "0.1.2"
 description = "A logging handler that sends errors and alerts to Telegram, SMS, webhooks, a Redis bus, email or your own function."
 readme = "README.md"
 license = { text = "MIT" }

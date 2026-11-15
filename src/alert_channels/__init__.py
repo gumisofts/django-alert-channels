@@ -7,7 +7,7 @@ from .conf import from_env
 from .dispatcher import Dispatcher, get_dispatcher, reset
 from .handler import AlertHandler, notify
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 __all__ = [
     "Alert",

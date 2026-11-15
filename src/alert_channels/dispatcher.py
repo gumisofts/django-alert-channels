@@ -137,7 +137,7 @@ class Dispatcher:
         self._thread: Optional[threading.Thread] = None
         self._pid: Optional[int] = None
         self._lock = threading.Lock()
-        self._last_complaint = 0.0
+        self._last_complaint = float("-inf")
 
     # --- intake ---------------------------------------------------------------------------------
 

@@ -9,6 +9,11 @@ from .conf import level_number
 from .dispatcher import Dispatcher, get_dispatcher, sending
 
 
+def _celery_hooked() -> bool:
+    module = sys.modules.get("alert_channels.contrib.celery")
+    return bool(module and module.installed())
+
+
 class AlertHandler(logging.Handler):
     """Sends log records to the configured channels.
 
@@ -46,6 +51,8 @@ class AlertHandler(logging.Handler):
             return
         if getattr(record, "alert", True) is False:
             return
+        if record.name == "celery.app.trace" and _celery_hooked():
+            return  # the task_failure hook reports task failures, once
         try:
             dispatcher = self.dispatcher
             if record.levelno < dispatcher.min_level:

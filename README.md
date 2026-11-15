@@ -28,7 +28,7 @@ It is built to be left on in production:
 ## Install
 
 ```
-pip install git+https://github.com/gumisofts/django-alert-channels.git@v0.1.1
+pip install git+https://github.com/gumisofts/django-alert-channels.git@v0.1.2
 ```
 
 ## Set up with environment variables
@@ -174,7 +174,8 @@ The JSON a webhook, the Redis bus and a callable receive:
 - **Failed Celery tasks.** Celery replaces the root logger's handlers in its workers, so the package
   hooks the `task_failure` signal instead. This is automatic with `"alert_channels"` in
   `INSTALLED_APPS`; otherwise call `alert_channels.contrib.celery.install()`. Task arguments are
-  not included.
+  not included. The hook also adds the handler to the worker's loggers, so errors logged inside a
+  task are alerted too.
 - **Direct alerts**, without a logger:
 
   ```python
