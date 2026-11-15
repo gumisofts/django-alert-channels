@@ -28,7 +28,7 @@ It is built to be left on in production:
 ## Install
 
 ```
-pip install git+https://github.com/gumisofts/django-alert-channels.git@v0.1.0
+pip install git+https://github.com/gumisofts/django-alert-channels.git@v0.1.1
 ```
 
 ## Set up with environment variables
