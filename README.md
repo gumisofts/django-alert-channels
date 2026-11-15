@@ -28,7 +28,7 @@ It is built to be left on in production:
 ## Install
 
 ```
-pip install git+https://github.com/gumisofts/django-alert-channels.git@v0.1.2
+pip install git+https://github.com/gumisofts/django-alert-channels.git@v0.2.0
 ```
 
 ## Set up with environment variables
@@ -76,6 +76,35 @@ Check it:
 ```
 python manage.py alert_test
 ```
+
+### Testing alerts
+
+`alert_test` sends test alerts of different kinds and prints what each channel did (`ok`, `skipped`
+with the reason, or the failure). Every test message starts with `[TEST]`.
+
+```
+python manage.py alert_test --list                 # the kinds, and the configured channels
+python manage.py alert_test                        # ping: every channel, whatever its level
+python manage.py alert_test error critical         # routed by level: shows which channels take which
+python manage.py alert_test exception request celery
+python manage.py alert_test all
+python manage.py alert_test critical --channel sms --message "Feed is down"
+python manage.py alert_test error --logger apps.wallet   # try a channel's logger filter
+```
+
+| Kind | What it sends |
+|---|---|
+| `ping` | A plain message to every channel, ignoring levels: can the channel deliver at all |
+| `warning`, `error`, `critical` | An alert at that level, routed like a real one |
+| `exception` | An error with a real traceback |
+| `request` | An unhandled error in a web request, as Django reports a 500 |
+| `celery` | A failed task, as the Celery hook reports it |
+| `scrub` | An error full of fake secrets and a phone number, to see the masking |
+| `burst` | The same error `--count` times through the real pipeline, to see deduplication |
+| `logging` | An error through Python logging, to check the handler is in `LOGGING` |
+| `all` | Every kind above |
+
+The command exits with an error when a channel fails, so it can be used in a deploy check.
 
 All variables are listed in [`conf.py`](src/alert_channels/conf.py) (`from_env`).
 

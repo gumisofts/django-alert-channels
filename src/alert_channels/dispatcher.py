@@ -196,17 +196,45 @@ class Dispatcher:
                 _complain(f"channel {channel.name!r} failed: {reason}")
             return f"failed: {Scrubber()(reason)}"
 
-    def send_test(self, message: str = "Test alert: this channel works.") -> Dict[str, str]:
-        """Send one alert to every channel now, ignoring levels, dedup and rate limits."""
+    def _selected(self, only: Optional[List[str]] = None) -> List[channel_module.Channel]:
+        return [channel for channel in self.channels if not only or channel.name in only]
+
+    def send_test(
+        self, message: str = "Test alert: this channel works.", only: Optional[List[str]] = None
+    ) -> Dict[str, str]:
+        """Send one alert to every channel (or those named in `only`) now, ignoring levels, dedup and
+        rate limits: "can this channel deliver at all"."""
         import logging
 
         alert = Alert.build(self.config, level=logging.CRITICAL, logger="alert_channels.test", message=message)
         alert.level = "TEST"
         _state.busy = True
         try:
-            return {channel.name: self._send(channel, alert) for channel in self.channels}
+            return {channel.name: self._send(channel, alert) for channel in self._selected(only)}
         finally:
             _state.busy = False
+
+    def send_routed(self, alert: Alert, only: Optional[List[str]] = None) -> Dict[str, str]:
+        """Send `alert` now to the channels that would really get it, and say why the others would not:
+        `{name: "ok" | "skipped: ..." | "failed: ..."}`. Ignores dedup and rate limits."""
+        import logging
+
+        results: Dict[str, str] = {}
+        _state.busy = True
+        try:
+            for channel in self._selected(only):
+                if self.ignore and alert.logger.startswith(self.ignore):
+                    results[channel.name] = "skipped: logger is in IGNORE_LOGGERS"
+                elif alert.levelno < channel.levelno:
+                    needs = logging.getLevelName(channel.levelno)
+                    results[channel.name] = f"skipped: this channel takes {needs} and above"
+                elif not channel.accepts(alert):
+                    results[channel.name] = "skipped: logger filter"
+                else:
+                    results[channel.name] = self._send(channel, alert)
+        finally:
+            _state.busy = False
+        return results
 
     # --- the worker thread ----------------------------------------------------------------------
 

@@ -19,21 +19,27 @@ from ..handler import notify
 _installed = False
 
 
+def failure_alert(name: str, task_id, exception) -> dict:
+    """What a failed task is reported as (`Alert.build` / `notify` keyword arguments).
+    The task's arguments are left out on purpose: they often hold personal data."""
+    return {
+        "message": f"Celery task {name} failed: {type(exception).__name__}: {exception}",
+        "level": logging.ERROR,
+        "logger": "celery.task",
+        "exc_info": exception,
+        "extra": {"task": name, "task_id": task_id},
+        "fingerprint": f"celery:{name}:{type(exception).__name__}",
+    }
+
+
 def _on_failure(sender=None, task_id=None, exception=None, **_kwargs) -> None:
     try:
         name = getattr(sender, "name", None) or str(sender)
         throws = getattr(sender, "throws", ()) or ()
         if exception is not None and throws and isinstance(exception, tuple(throws)):
             return
-        # The task's arguments are left out on purpose: they often hold personal data.
-        notify(
-            f"Celery task {name} failed: {type(exception).__name__}: {exception}",
-            level=logging.ERROR,
-            logger="celery.task",
-            exc_info=exception,
-            extra={"task": name, "task_id": task_id},
-            fingerprint=f"celery:{name}:{type(exception).__name__}",
-        )
+        details = failure_alert(name, task_id, exception)
+        notify(details.pop("message"), **details)
     except Exception:
         pass
 

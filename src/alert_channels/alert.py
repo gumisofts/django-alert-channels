@@ -2,6 +2,7 @@
 
 import hashlib
 import logging
+import sys
 import time
 import traceback as traceback_module
 from dataclasses import dataclass, field
@@ -81,6 +82,11 @@ class Alert:
             patterns=config.get("SCRUB_PATTERNS") or (),
         )
         exception = trace = ""
+        # Accept what `logging` accepts: True, an exception instance, or the (type, value, tb) tuple.
+        if exc_info is True:
+            exc_info = sys.exc_info()
+        elif isinstance(exc_info, BaseException):
+            exc_info = (type(exc_info), exc_info, exc_info.__traceback__)
         if exc_info and exc_info[0] is not None:
             exception = exc_info[0].__name__
             lines = "".join(traceback_module.format_exception(*exc_info)).rstrip().splitlines()

@@ -370,19 +370,94 @@ class CeleryTests(Base):
 
 
 class CommandTests(Base):
-    def test_alert_test_command(self):
-        from django.core.management import CommandError, call_command
+    def run_command(self, *args, channels=None):
+        from django.core.management import call_command
         from django.test import override_settings
 
         out = io.StringIO()
         alert_channels.reset()
-        with override_settings(ALERT_CHANNELS=config()):
-            call_command("alert_test", stdout=out)
+        chosen = channels or {"chat": {"type": "collect"}, "pager": {"type": "collect", "level": "CRITICAL"}}
+        try:
+            with override_settings(ALERT_CHANNELS=config(**chosen)):
+                call_command("alert_test", *args, stdout=out)
+        finally:
             alert_channels.reset()
-        self.assertIn("all: ok", out.getvalue())
-        self.assertEqual(SENT[0][1].level, "TEST")
+        return out.getvalue()
+
+    def test_ping_reaches_every_channel_whatever_its_level(self):
+        out = self.run_command()
+        self.assertIn("chat: ok", out)
+        self.assertIn("pager: ok", out)
+        self.assertEqual({alert.level for _, alert, _ in SENT}, {"TEST"})
+        self.assertTrue(SENT[0][1].message.startswith("[TEST] "))
+
+    def test_levels_are_routed_and_skips_are_explained(self):
+        out = self.run_command("error", "critical")
+        self.assertIn("pager: skipped: this channel takes CRITICAL and above", out)
+        self.assertEqual([(name, alert.level) for name, alert, _ in SENT],
+                         [("chat", "ERROR"), ("chat", "CRITICAL"), ("pager", "CRITICAL")])  # fmt: skip
+
+    def test_exception_request_and_celery_kinds_look_like_the_real_thing(self):
+        self.run_command("exception", "request", "celery", "--channel", "chat")
+        by_logger = {alert.logger: alert for _, alert, _ in SENT}
+        self.assertIn("KeyError: 'missing_key'", by_logger["alert_test"].traceback)
+        request = by_logger["django.request"]
+        self.assertEqual(request.request, {"method": "POST", "path": "/alert-test/checkout/"})
+        self.assertNotIn("not-shown", request.text())
+        task = by_logger["celery.task"]
+        self.assertIn("Celery task alert_test.tasks.example failed: TimeoutError", task.message)
+        self.assertEqual(task.extra["task"], "alert_test.tasks.example")
+
+    def test_scrub_kind_shows_the_masked_text(self):
+        out = self.run_command("scrub", "--channel", "chat")
+        self.assertIn("password=*** api_key=***", out)
+        for secret in ("hunter2", "sk_live_123456", "user:secret@", "251911223344"):
+            self.assertNotIn(secret, SENT[0][1].message)
+
+    def test_burst_shows_deduplication(self):
+        out = self.run_command("burst", "--count", "6", "--channel", "chat")
+        self.assertIn("6 raised, 1 sent, 5 held back", out)
+        self.assertEqual(len([1 for name, _, _ in SENT if name == "chat"]), 1)
+
+    def test_logging_kind_checks_the_handler_is_wired(self):
+        from django.core.management import CommandError
+
+        with self.assertRaises(CommandError):
+            self.run_command("logging")
+        root = logging.getLogger()
+        handler = AlertHandler()
+        root.addHandler(handler)
+        try:
+            out = self.run_command("logging", "--message", "wired")
+        finally:
+            root.removeHandler(handler)
+        self.assertIn("handed to logging and sent", out)
+        self.assertEqual([alert.message for _, alert, _ in SENT if alert.logger == "alert_test"], ["[TEST] wired"])
+
+    def test_all_list_custom_message_logger_and_bad_input(self):
+        from django.core.management import CommandError
+
+        out = self.run_command("--list")
+        self.assertIn("burst", out)
+        self.assertIn("pager      type collect, CRITICAL and above", out)
+        self.assertEqual(SENT, [])
+
+        self.run_command("error", "--message", "disk is full", "--logger", "apps.wallet", "--channel", "chat")
+        self.assertEqual((SENT[-1][1].message, SENT[-1][1].logger), ("[TEST] disk is full", "apps.wallet"))
+
+        for bad in (["nonsense"], ["error", "--channel", "nobody"]):
+            with self.assertRaises(CommandError):
+                self.run_command(*bad)
+        with self.assertRaises(CommandError):
+            self.run_command(channels={"bad": {"type": "collect", "fail": True}})
+
+    def test_no_channel_configured_is_an_error(self):
+        from django.core.management import CommandError, call_command
+        from django.test import override_settings
+
+        alert_channels.reset()
         with override_settings(ALERT_CHANNELS={"CHANNELS": {}}), self.assertRaises(CommandError):
-            call_command("alert_test", stdout=out)
+            call_command("alert_test", stdout=io.StringIO())
         alert_channels.reset()
 
 
